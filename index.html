@@ -113,6 +113,33 @@ dialog::backdrop { background: #24143380; }
   #rows td:first-child button { display: inline !important; color: black; font: inherit; }
   tr { break-inside: avoid; }
 }
+
+#scoreGrid { --student: 224px; width: 1254px; table-layout: fixed; }
+#scoreGrid[data-view="final"] { width: 1236px; }
+#scoreGrid th, #scoreGrid td { height: 48px; padding: 0 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#scoreGrid th:nth-child(1) { width: var(--student); }
+#scoreGrid th:nth-child(2), #scoreGrid th:nth-child(3) { width: 114px; }
+#scoreGrid th:nth-child(4) { width: 108px; }
+#scoreGrid th:nth-child(5) { width: 100px; }
+#scoreGrid th:nth-child(6) { width: 226px; }
+#scoreGrid[data-view="final"] th:nth-child(6),
+#scoreGrid[data-view="final"] th:nth-child(7) { width: 100px; }
+#scoreGrid[data-view="final"] th:nth-child(8) { width: 226px; }
+#scoreGrid tbody input:not([type=checkbox]) {
+  width: 100%; min-height: 34px; height: 34px; text-align: center;
+  appearance: textfield; border-radius: 4px;
+}
+#scoreGrid input::-webkit-outer-spin-button, #scoreGrid input::-webkit-inner-spin-button { appearance: none; margin: 0; }
+#scoreGrid tbody input:focus { border-color: var(--purple); outline: 2px solid var(--purple); outline-offset: -2px; background: #fff; }
+#scoreGrid td:first-child button { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#scoreGrid th, #scoreGrid td { scroll-margin-top: 48px; scroll-margin-left: var(--student); }
+#scoreGrid input { scroll-margin-top: 50px; scroll-margin-left: calc(var(--student) + 8px); }
+@media (max-width: 620px) { #scoreGrid { --student: 148px; } }
+@media print {
+  #scoreGrid, #scoreGrid[data-view="final"] { width: 100%; table-layout: auto; }
+  #scoreGrid th:nth-child(n), #scoreGrid td:nth-child(n) { width: auto; height: auto; padding: 4px; white-space: normal; overflow: visible; }
+  #scoreGrid td:first-child button { white-space: normal; max-width: none; }
+}
 </style>
 </head>
 <body>
@@ -159,7 +186,7 @@ dialog::backdrop { background: #24143380; }
     <section class="panel" aria-labelledby="heading">
       <div class="panel-heading"><h2 id="heading">Class assessment</h2></div>
       <div id="stats" class="stats"></div>
-      <div class="scroll" tabindex="0" role="region" aria-labelledby="heading"><table aria-labelledby="heading"><thead id="thead"></thead><tbody id="rows"></tbody></table></div>
+      <div class="scroll" tabindex="0" role="region" aria-labelledby="heading"><table id="scoreGrid" aria-labelledby="heading"><thead id="thead"></thead><tbody id="rows"></tbody></table></div>
     </section>
   </section>
 </main>
@@ -188,6 +215,6 @@ dialog::backdrop { background: #24143380; }
   <div id="temporaryBlock" hidden><label for="temporaryPassword">Temporary password</label><input id="temporaryPassword" readonly autocomplete="off"><p class="hint">Share this password privately with the teacher.</p></div>
   <div class="dialog-footer"><button id="closeTeacher" class="quiet">Close</button></div>
 </dialog>
-<script type="module" src="./password-app.js?v=rollout1"></script>
+<script type="module" src="./password-app.js?v=scoregrid1"></script>
 </body>
 </html>
