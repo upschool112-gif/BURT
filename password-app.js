@@ -149,7 +149,10 @@ $('manageTeachers').onclick = () => {
 $('closeTeacher').onclick = () => { if (!accountBusy) dialog.close(); };
 dialog.oncancel = event => { if (accountBusy) event.preventDefault(); };
 dialog.onclose = clearTemporary;
-for (const id of ['teacher','assignmentYear']) $(id).onchange = () => manage(loadTeacherClasses);
+for (const id of ['teacher','assignmentYear']) $(id).onchange = () => {
+  clearTemporary();
+  manage(loadTeacherClasses);
+};
 $('createTeacher').onsubmit = event => {
   event.preventDefault();
   manage(async () => {
@@ -157,6 +160,15 @@ $('createTeacher').onsubmit = event => {
     $('newTeacherEmail').value = '';
   });
 };
+$('showRolloutPassword')?.addEventListener('click', () => manage(async () => {
+  if (!confirm('Reveal this temporary password once? Copy it before closing this window.')) return;
+  clearTemporary();
+  $('temporaryPassword').value = check(await db.rpc('burt_claim_rollout_password', {
+    teacher_id: $('teacher').value,
+  }));
+  $('temporaryBlock').hidden = false;
+  $('teacherStatus').textContent = 'Share this temporary password privately with the selected teacher.';
+}));
 $('resetTeacher').onclick = () => {
   if (confirm('Reset this teacher’s password and end their sessions?')) {
     manage(() => issuePassword({action: 'reset', teacherId: $('teacher').value}));
