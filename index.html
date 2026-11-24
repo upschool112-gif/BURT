@@ -142,6 +142,38 @@ dialog::backdrop { background: #24143380; }
   #scoreGrid th:nth-child(n), #scoreGrid td:nth-child(n) { width: auto; height: auto; padding: 4px; white-space: normal; overflow: visible; }
   #scoreGrid td:first-child button { white-space: normal; max-width: none; }
 }
+
+.site-header { background: #552481; border-bottom-color: #421365; }
+.brand, .brand p { color: #fff; }
+.brand-mark { display: grid; place-items: center; border-radius: 50%; border: 2px solid white; padding: 3px; }
+.site-header #logout { background: transparent; color: white; border-color: #e6d7f2; }
+.site-header #logout:hover { background: #713e9b; }
+.site-header #logout:focus-visible { outline-color: white; }
+#app { padding-bottom: 76px; }
+.floating-tools {
+  position: fixed; right: max(14px, env(safe-area-inset-right)); bottom: max(14px, env(safe-area-inset-bottom));
+  z-index: 5; display: flex; gap: 8px; align-items: center; width: min(420px, calc(100vw - 28px));
+  padding: 9px; border: 1px solid #d7c3e7; border-radius: 12px; background: white; box-shadow: 0 6px 24px #32134c29;
+}
+.floating-tools button { flex: none; white-space: nowrap; }
+.floating-tools input { flex: 1; }
+.search-result { margin-bottom: 8px; }
+.search-result:empty { display: none; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
+.score-insights .panel-heading { margin-bottom: 5px; }
+.score-bands { list-style: none; padding: 0; margin: 15px 0 0; display: grid; gap: 9px; }
+.score-bands li { display: grid; grid-template-columns: 74px minmax(0, 1fr) 32px; gap: 10px; align-items: center; font-variant-numeric: tabular-nums; }
+.score-band-track { display: block; height: 17px; background: var(--lavender); border-radius: 5px; overflow: hidden; }
+.score-band-track span { display: block; height: 100%; background: #63328d; border-radius: inherit; print-color-adjust: exact; }
+.score-bands strong { text-align: right; }
+@media print {
+  .floating-tools, .search-result { display: none !important; }
+  #app { padding-bottom: 0; }
+  #rows tr[hidden] { display: table-row !important; }
+  .site-header { background: white; }
+  .brand, .brand p { color: black; }
+  .score-insights { break-inside: avoid; }
+}
 </style>
 </head>
 <body>
@@ -179,7 +211,7 @@ dialog::backdrop { background: #24143380; }
         <div class="field"><label for="term">Assessment</label><select id="term"><option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option><option value="final">Final results</option></select></div>
       </div>
       <div class="toolbar workspace-actions">
-        <button id="save">Save changes</button><button id="reload" class="quiet">Refresh</button>
+        <button id="reload" class="quiet">Refresh</button>
         <button id="print" class="secondary">Print report</button><button id="export" class="secondary">Export CSV</button>
         <button id="manageTeachers" class="quiet" hidden>Manage teachers</button>
       </div>
@@ -188,8 +220,19 @@ dialog::backdrop { background: #24143380; }
     <section class="panel" aria-labelledby="heading">
       <div class="panel-heading"><h2 id="heading">Class assessment</h2></div>
       <div id="stats" class="stats"></div>
+      <p id="searchResult" class="hint search-result" role="status"></p>
       <div class="scroll" tabindex="0" role="region" aria-labelledby="heading"><table id="scoreGrid" aria-labelledby="heading"><thead id="thead"></thead><tbody id="rows"></tbody></table></div>
     </section>
+    <section class="panel score-insights" aria-labelledby="chartTitle">
+      <div class="panel-heading"><h2 id="chartTitle">Class score distribution</h2></div>
+      <p id="chartSummary" class="hint"></p>
+      <div id="scoreDistribution"></div>
+    </section>
+    <div class="floating-tools" role="group" aria-label="Score entry tools">
+      <label class="visually-hidden" for="studentSearch">Search student names</label>
+      <input id="studentSearch" type="search" placeholder="Search student names" autocomplete="off" aria-controls="rows">
+      <button id="save" type="button" disabled>Save changes</button>
+    </div>
   </section>
 </main>
 <dialog id="detail" aria-labelledby="detailTitle">
@@ -217,6 +260,6 @@ dialog::backdrop { background: #24143380; }
   <div id="temporaryBlock" hidden><label for="temporaryPassword">Temporary password</label><input id="temporaryPassword" readonly autocomplete="off"><p class="hint">Share this password privately with the teacher.</p></div>
   <div class="dialog-footer"><button id="closeTeacher" class="quiet">Close</button></div>
 </dialog>
-<script type="module" src="./password-app.js?v=scoregrid1"></script>
+<script type="module" src="./password-app.js?v=purple2"></script>
 </body>
 </html>
