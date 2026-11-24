@@ -21,9 +21,26 @@ for(const id of ['year','class','term'])$(id).onchange=()=>{if(!guard()){ $('yea
 $('reload').onclick=()=>{if(guard())load()};$('save').onclick=save;$('print').onclick=()=>{if(!dirty.size)window.print();else notify('Save changes before printing.',true)};$('closeDetail').onclick=()=>$('detail').close();
 $('export').onclick=()=>{if(dirty.size)return notify('Save before exporting.',true);const csv=x=>'"'+String(x??'').replace(/^[=+@\-\t\r]/,"'$&").replaceAll('"','""')+'"';let rows=[Array.from($('thead').querySelectorAll('th'),x=>x.textContent).filter((x,i)=>view!=='final'||i!==8),...roster.map(r=>{let z=records.find(x=>x.enrollment_id===r.id)||{};return view==='final'?[r.students?.full_name,z.terms_completed,z.automatic_score,z.manual_score,z.final_score,age(z.reading_months),gap(z.difference_months),z.interpretation]:[r.students?.full_name,z.age_years,z.raw_score,age(z.reading_months),gap(z.difference_months),z.interpretation,z.recommended_action]})];const url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(csv).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));let a=el('a');a.href=url;a.download='BURT-results.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 const website = 'https://upschool112-gif.github.io/BURT/';
+const starterPassword = 'ups12345678';
+
+async function requestPasswordSetup() {
+  $('send').disabled = true;
+  $('recover').disabled = true;
+  try {
+    check(await db.auth.resetPasswordForEmail($('email').value.trim(), {redirectTo: website}));
+    notify('If your BURT account is registered, check your email for a link to set your password.');
+  } catch {
+    notify('The password setup link could not be requested. Try again later.', true);
+  } finally {
+    $('password').value = '';
+    $('send').disabled = false;
+    $('recover').disabled = false;
+  }
+}
 
 $('loginForm').onsubmit = async event => {
   event.preventDefault();
+  if ($('password').value === starterPassword) return requestPasswordSetup();
   $('send').disabled = true;
   try {
     const { session } = check(await db.auth.signInWithPassword({email: $('email').value.trim(), password: $('password').value}));
@@ -35,19 +52,13 @@ $('loginForm').onsubmit = async event => {
     $('send').disabled = false;
   }
 };
-$('recover').onclick = async () => {
-  if (!$('email').reportValidity()) return;
-  $('recover').disabled = true;
-  try {
-    check(await db.auth.resetPasswordForEmail($('email').value.trim(), {redirectTo: website}));
-    notify('If your account is registered, check your inbox for a password setup link.');
-  } catch {
-    notify('The password setup link could not be requested. Try again later.', true);
-  } finally { $('recover').disabled = false; }
+$('recover').onclick = () => {
+  if ($('email').reportValidity()) return requestPasswordSetup();
 };
 $('changeForm').onsubmit = async event => {
   event.preventDefault();
   const password = $('newPassword').value;
+  if (password === starterPassword) return notify('Choose a password different from the starter password.', true);
   if (password !== $('confirmPassword').value) return notify('The passwords must match.', true);
   $('changePassword').disabled = true;
   try {
@@ -70,7 +81,6 @@ window.addEventListener('beforeunload', event => {
 
 const dialog = $('teacherDialog');
 let accountBusy = false;
-function clearTemporary() { $('temporaryPassword').value = ''; $('temporaryBlock').hidden = true; }
 async function loadTeacherClasses() {
   const id = $('teacher').value;
   $('teacherControls').hidden = !id;
@@ -107,21 +117,19 @@ async function manage(action) {
   accountBusy = true;
   $('teacherFields').disabled = true;
   $('teacherStatus').textContent = '';
-  // Keep the temporary password visible while the administrator assigns classes.
   try { await action(); }
   catch (error) { $('teacherStatus').textContent = error.message; }
   finally { $('teacherFields').disabled = false; accountBusy = false; }
 }
 async function issuePassword(body) {
-  clearTemporary();
-  const {data, error} = await db.functions.invoke('burt-teacher-admin', {body});
+  const {error} = await db.functions.invoke('burt-teacher-admin', {body});
   if (error) {
     const details = await error.context?.json?.().catch(() => null);
     throw Error(details?.error || error.message);
   }
-  $('temporaryPassword').value = data.temporaryPassword;
-  $('temporaryBlock').hidden = false;
-  $('teacherStatus').textContent = body.action === 'create' ? 'Teacher account created.' : 'Password reset.';
+  $('teacherStatus').textContent = body.action === 'create'
+    ? 'Teacher account created. The teacher can use the shared starter password to request a setup email.'
+    : 'Password reset. The teacher can use the shared starter password to request a setup email.';
   await refreshTeachers();
 }
 $('manageTeachers').onclick = () => {
@@ -133,7 +141,6 @@ $('manageTeachers').onclick = () => {
 };
 $('closeTeacher').onclick = () => { if (!accountBusy) dialog.close(); };
 dialog.oncancel = event => { if (accountBusy) event.preventDefault(); };
-dialog.onclose = clearTemporary;
 for (const id of ['teacher','assignmentYear']) $(id).onchange = () => manage(loadTeacherClasses);
 $('createTeacher').onsubmit = event => {
   event.preventDefault();
