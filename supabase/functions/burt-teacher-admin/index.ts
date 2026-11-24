@@ -29,14 +29,14 @@ Deno.serve(async (request) => {
   try {
     const { action, email, teacherId } = await request.json();
     const admin = createClient(projectUrl, serverKey, { auth: options }).auth.admin;
-    const internalPassword = crypto.randomUUID() + '!Aa9';
+    const temporaryPassword = crypto.randomUUID() + '!Aa9';
     if (action === 'create') {
       if (typeof email !== 'string' || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return reply(400, { error: 'Enter a valid teacher email.' });
       }
       const { error } = await admin.createUser({
         email: email.toLowerCase(),
-        password: internalPassword,
+        password: temporaryPassword,
         email_confirm: true,
         app_metadata: { burt_provisioned_teacher: true },
       });
@@ -48,14 +48,14 @@ Deno.serve(async (request) => {
       const { data: target, error: lookupError } = await admin.getUserById(teacherId);
       if (lookupError || !target.user) return reply(404, { error: 'Teacher account not found.' });
       const { error } = await admin.updateUserById(teacherId, {
-        password: internalPassword,
+        password: temporaryPassword,
         app_metadata: { ...target.user.app_metadata, burt_reset: crypto.randomUUID() },
       });
       if (error) return reply(409, { error: 'Password reset could not be completed.' });
     } else {
       return reply(400, { error: 'Unknown account action.' });
     }
-    return reply(200, { success: true });
+    return reply(200, { temporaryPassword });
   } catch {
     return reply(400, { error: 'Account request could not be processed.' });
   }
