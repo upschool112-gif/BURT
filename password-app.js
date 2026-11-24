@@ -8,9 +8,77 @@ function options(){const y=$('year').value,old=$('class').value;$('class').repla
 function renderCoverage(){ $('grades').replaceChildren();if(role!=='admin')return;for(const g of coverage.filter(g=>g.academic_year_id===$('year').value).sort((a,b)=>a.grade_level-b.grade_level)){const l=el('label','Grade '+g.grade_level+' '),i=el('input');i.type='checkbox';i.checked=g.enabled;i.onchange=async()=>{if(dirty.size){i.checked=g.enabled;return notify('Save or discard changes first.',true)}i.disabled=true;try{check(await db.from('grade_coverage').update({enabled:i.checked}).eq('academic_year_id',g.academic_year_id).eq('grade_level',g.grade_level).select().single());g.enabled=i.checked;options();await load()}catch(e){i.checked=g.enabled;notify(e.message,true)}finally{i.disabled=false}};l.append(i);$('grades').append(l)}}
 async function start(session){if(!session)return;try{const staff=check(await db.from('staff').select('role,enabled,password_change_required').eq('user_id',session.user.id).maybeSingle());if(!staff?.enabled)throw Error('Contact the BURT administrator for access.');$('logout').hidden=false;if(staff.password_change_required||recovery){$('login').hidden=true;$('passwordChange').hidden=false;return}role=staff.role;const data=await Promise.all([db.from('academic_years').select('*').order('label',{ascending:false}),db.from('classes').select('*').eq('is_active',true).neq('class_code','TEST-G8-2026').order('grade_level'),db.from('grade_coverage').select('*'),db.from('burt_conversion').select('*'),db.from('class_access').select('class_id,academic_year_id').eq('user_id',session.user.id)]);assignments=check(data[4]);[years,classes,coverage]=data.slice(0,3).map(check);if(!years.length)throw Error('Sign in again with your BURT password.');lookup=new Map(check(data[3]).map(x=>[x.raw_score,x.reading_months]));$('year').replaceChildren();for(const y of years)opt($('year'),y.id,y.label);const active=years.find(y=>y.is_active);if(active)$('year').value=active.id;$('identity').textContent=session.user.email+' · '+role;$('login').hidden=true;$('app').hidden=false;$('logout').hidden=false;$('coverage').hidden=role!=='admin';$('manageTeachers').hidden=role!=='admin';options();renderCoverage();await load()}catch(e){notify('Access unavailable: '+e.message,true);await db.auth.signOut({scope:'local'});$('logout').hidden=true;$('login').hidden=false;$('app').hidden=true}}
 function cell(tr,t){const c=el('td',t);tr.append(c);return c}
+function filterStudents() {
+  const search = $('studentSearch');
+  if (!search) return;
+  const filter = search.value.trim().toLocaleLowerCase();
+  let matches = 0;
+  for (const row of $('rows').rows) {
+    row.hidden = !row.cells[0].textContent.toLocaleLowerCase().includes(filter);
+    if (!row.hidden) matches += 1;
+  }
+  $('searchResult').textContent = filter ? matches + (matches === 1 ? ' matching student' : ' matching students') : '';
+}
+
+$('studentSearch')?.addEventListener('input', filterStudents);
+$('studentSearch')?.addEventListener('keydown', event => {
+  if (event.key === 'Escape') {
+    event.target.value = '';
+    filterStudents();
+  }
+});
+
+function renderScoreChart() {
+  const chart = $('scoreDistribution');
+  if (!chart) return;
+  const byEnrollment = new Map(records.map(record => [record.enrollment_id, record]));
+  const scores = [];
+  for (const student of roster) {
+    const saved = byEnrollment.get(student.id);
+    const value = view === 'final' ? saved?.final_score : (dirty.get(student.id) || saved)?.raw_score;
+    if (value != null && value !== '' && Number.isFinite(Number(value))) scores.push(Number(value));
+  }
+  chart.replaceChildren();
+  if (!scores.length) {
+    $('chartSummary').textContent = roster.length ? 'No scores entered for this assessment yet.' : 'Select an assigned class to view score distribution.';
+    return;
+  }
+  const average = scores.reduce((total, score) => total + score, 0) / scores.length;
+  const bands = [
+    {label: '0–<22', upper: 22, count: 0},
+    {label: '22–<44', upper: 44, count: 0},
+    {label: '44–<66', upper: 66, count: 0},
+    {label: '66–<88', upper: 88, count: 0},
+    {label: '88–110', upper: Infinity, count: 0},
+  ];
+  for (const score of scores) bands.find(band => score < band.upper).count += 1;
+  const peak = Math.max(...bands.map(band => band.count));
+  const list = el('ul');
+  list.className = 'score-bands';
+  list.setAttribute('aria-label', 'Number of students by score range out of 110');
+  for (const band of bands) {
+    const item = el('li');
+    const track = el('span');
+    track.className = 'score-band-track';
+    track.setAttribute('aria-hidden', 'true');
+    const bar = el('span');
+    bar.style.width = (100 * band.count / peak) + '%';
+    track.append(bar);
+    const count = el('strong', String(band.count));
+    count.setAttribute('aria-label', band.count + (band.count === 1 ? ' student' : ' students'));
+    item.append(el('span', band.label), track, count);
+    list.append(item);
+  }
+  const scoreType = view === 'final' ? 'Final scores' : 'Term ' + view + ' raw scores';
+  const unsaved = view !== 'final' && dirty.size ? ' · Includes unsaved entries' : '';
+  $('chartSummary').textContent = scoreType + ' · Average ' + average.toFixed(1) + '/110 · ' +
+    scores.length + ' of ' + roster.length + ' scored' + unsaved;
+  chart.append(list);
+}
+
 function focusScoreCell(row, column) {
   const target = $('rows').querySelector(`input[data-row="${row}"][data-col="${column}"]:not(:disabled)`);
-  if (!target) return false;
+  if (!target || target.closest('tr').hidden) return false;
   target.focus();
   return true;
 }
@@ -43,12 +111,21 @@ function input(tr, value, max, row, col, change) {
         event.preventDefault();
         const nextRow = row + ({ArrowUp: -1, ArrowDown: 1, Enter: direction}[event.key] ?? 0);
         const nextCol = col + ({ArrowLeft: -1, ArrowRight: 1}[event.key] ?? 0);
-        focusScoreCell(nextRow, nextCol);
+        let candidate = nextRow;
+        const step = Math.sign(nextRow - row);
+        while (candidate >= 0 && candidate < roster.length) {
+          if (focusScoreCell(candidate, nextCol) || !step) break;
+          candidate += step;
+        }
         break;
       }
       case 'Tab': {
-        const next = row * 2 + col + direction;
-        if (next >= 0 && focusScoreCell(Math.floor(next / 2), next % 2)) event.preventDefault();
+        for (let next = row * 2 + col + direction; next >= 0 && next < roster.length * 2; next += direction) {
+          if (focusScoreCell(Math.floor(next / 2), next % 2)) {
+            event.preventDefault();
+            break;
+          }
+        }
         break;
       }
     }
@@ -57,8 +134,8 @@ function input(tr, value, max, row, col, change) {
   return i;
 }
 function number(i){return i.value===''?null:Number(i.value)}
-function render(){let final=view==='final';const grid=$('scoreGrid');if(grid)grid.dataset.view=final?'final':'term';$('thead').replaceChildren();let h=el('tr');for(const title of (final?['Student','Terms complete','Auto average','Manual average','Final score','Reading age','Difference','Interpretation','Action']:['Student','Age (years)','Raw score /110','Reading age','Difference','Interpretation','Recommended action']))h.append(el('th',title));$('thead').append(h);$('rows').replaceChildren();roster.forEach((r,j)=>{let tr=el('tr'),name=el('button',r.students?.full_name||'Student');name.onclick=()=>detail(r);cell(tr).append(name);let rec=records.find(x=>x.enrollment_id===r.id)||{};if(final){for(const v of [rec.terms_completed??0,rec.automatic_score??'—',rec.manual_score??'—',rec.final_score??'—',age(rec.reading_months),gap(rec.difference_months),rec.interpretation??'Pending'])cell(tr,String(v));const btn=el('button','Manual override');btn.disabled=role==='academic';btn.onclick=()=>override(r);cell(tr).append(btn)}else{let local=dirty.get(r.id)||{enrollment_id:r.id,class_id:r.class_id,academic_year_id:r.academic_year_id,term:Number(view),age_years:rec.age_years??null,raw_score:rec.raw_score??null};let a,s;const refresh=()=>{if(!a.validity.valid||!s.validity.valid){notify('Enter a whole-number age from 0 to 120 and a raw score from 0 to 110.',true);return}local={...local,age_years:number(a),raw_score:number(s)};dirty.set(r.id,local);const x=calc(local.raw_score,local.age_years);reading.textContent=age(x.m);diff.textContent=gap(x.d);cat.textContent=x.c;cat.title=x.c;action.textContent=x.action;action.title=x.action;stats();enable(true)};a=input(tr,local.age_years,120,j,0,refresh);s=input(tr,local.raw_score,110,j,1,refresh);a.disabled=s.disabled=role==='academic';let x=calc(local.raw_score,local.age_years);var reading=cell(tr,age(x.m)),diff=cell(tr,gap(x.d)),cat=cell(tr,x.c),action=cell(tr,x.action)}for(const cell of tr.cells){if(cell.childElementCount===0)cell.title=cell.textContent}name.title=name.textContent;$('rows').append(tr)});stats();enable(!final)}
-function stats(){let counts={},done=0;for(const r of roster){let rec=records.find(x=>x.enrollment_id===r.id)||{},d=dirty.get(r.id)||rec,c=view==='final'?(rec.interpretation||'Pending'):calc(d.raw_score,d.age_years).c;if(c!=='Pending'&&c!=='Age pending'&&c!=='Conversion unavailable')done++;counts[c]=(counts[c]||0)+1}$('stats').replaceChildren();for(const [k,v] of Object.entries({'Enrolled':roster.length,'Interpreted':done,...counts})){let x=el('div',k);x.className='stat';x.append(el('strong',v));$('stats').append(x)}}
+function render(){let final=view==='final';const grid=$('scoreGrid');if(grid)grid.dataset.view=final?'final':'term';$('thead').replaceChildren();let h=el('tr');for(const title of (final?['Student','Terms complete','Auto average','Manual average','Final score','Reading age','Difference','Interpretation','Action']:['Student','Age (years)','Raw score /110','Reading age','Difference','Interpretation','Recommended action']))h.append(el('th',title));$('thead').append(h);$('rows').replaceChildren();roster.forEach((r,j)=>{let tr=el('tr'),name=el('button',r.students?.full_name||'Student');name.onclick=()=>detail(r);cell(tr).append(name);let rec=records.find(x=>x.enrollment_id===r.id)||{};if(final){for(const v of [rec.terms_completed??0,rec.automatic_score??'—',rec.manual_score??'—',rec.final_score??'—',age(rec.reading_months),gap(rec.difference_months),rec.interpretation??'Pending'])cell(tr,String(v));const btn=el('button','Manual override');btn.disabled=role==='academic';btn.onclick=()=>override(r);cell(tr).append(btn)}else{let local=dirty.get(r.id)||{enrollment_id:r.id,class_id:r.class_id,academic_year_id:r.academic_year_id,term:Number(view),age_years:rec.age_years??null,raw_score:rec.raw_score??null};let a,s;const refresh=()=>{if(!a.validity.valid||!s.validity.valid){notify('Enter a whole-number age from 0 to 120 and a raw score from 0 to 110.',true);return}local={...local,age_years:number(a),raw_score:number(s)};dirty.set(r.id,local);const x=calc(local.raw_score,local.age_years);reading.textContent=age(x.m);diff.textContent=gap(x.d);cat.textContent=x.c;cat.title=x.c;action.textContent=x.action;action.title=x.action;stats();enable(true)};a=input(tr,local.age_years,120,j,0,refresh);s=input(tr,local.raw_score,110,j,1,refresh);a.disabled=s.disabled=role==='academic';let x=calc(local.raw_score,local.age_years);var reading=cell(tr,age(x.m)),diff=cell(tr,gap(x.d)),cat=cell(tr,x.c),action=cell(tr,x.action)}for(const cell of tr.cells){if(cell.childElementCount===0)cell.title=cell.textContent}name.title=name.textContent;$('rows').append(tr)});filterStudents();stats();enable(!final)}
+function stats(){let counts={},done=0;for(const r of roster){let rec=records.find(x=>x.enrollment_id===r.id)||{},d=dirty.get(r.id)||rec,c=view==='final'?(rec.interpretation||'Pending'):calc(d.raw_score,d.age_years).c;if(c!=='Pending'&&c!=='Age pending'&&c!=='Conversion unavailable')done++;counts[c]=(counts[c]||0)+1}$('stats').replaceChildren();for(const [k,v] of Object.entries({'Enrolled':roster.length,'Interpreted':done,...counts})){let x=el('div',k);x.className='stat';x.append(el('strong',v));$('stats').append(x)}renderScoreChart()}
 async function load(){let n=++loadVersion;busy=true;enable(false);dirty.clear();roster=[];records=[];const y=$('year').value,c=$('class').value;view=$('term').value;context={y,c,view};try{if(!c||!y){render();notify('No enabled assigned class. Ask an administrator to enable grade coverage.');return}const data=await Promise.all([db.from('enrollments').select('id,class_id,academic_year_id,students(full_name)').eq('academic_year_id',y).eq('class_id',c).eq('status','active'),view==='final'?db.from('final_results').select('*').eq('academic_year_id',y).eq('class_id',c):db.from('term_results').select('*').eq('academic_year_id',y).eq('class_id',c).eq('term',Number(view))]);if(n!==loadVersion)return;roster=check(data[0]).sort((a,b)=>(a.students?.full_name||'').localeCompare(b.students?.full_name||''));records=check(data[1]);$('heading').textContent=$('class').selectedOptions[0].text+' · '+$('term').selectedOptions[0].text;render();notify('Loaded '+roster.length+' active enrollments.')}catch(e){if(n===loadVersion){render();notify(e.message,true)}}finally{if(n===loadVersion){busy=false;enable(view!=='final')}}}
 async function save(){if(!dirty.size||busy)return;if([...$('rows').querySelectorAll('input')].some(i=>!i.validity.valid))return notify('Correct invalid inputs before saving.',true);busy=true;enable(false);for(const i of $('rows').querySelectorAll('input,button'))i.disabled=true;try{let payload=[...dirty.values()];let data=check(await db.from('assessments').upsert(payload,{onConflict:'enrollment_id,term'}).select('enrollment_id'));if(data.length!==payload.length)throw Error('Not all rows were saved.');await load();notify('Saved '+data.length+' assessment records.')}catch(e){notify('Save failed: '+e.message,true)}finally{busy=false;render();enable(true)}}
 async function detail(r){try{const rows=check(await db.from('term_results').select('*').eq('enrollment_id',r.id).order('term'));$('detailTitle').textContent=r.students?.full_name||'Student';$('detailBody').replaceChildren();for(let t=1;t<=3;t++){const z=rows.find(x=>x.term===t);$('detailBody').append(el('h3','Term '+t),el('p',z?'Score: '+(z.raw_score??'—')+' / 110 · Reading age: '+age(z.reading_months)+' · Difference: '+gap(z.difference_months)+' · '+z.interpretation:'Not assessed'),el('p',z?.recommended_action||''))}const first=rows.find(x=>x.raw_score!=null),last=[...rows].reverse().find(x=>x.raw_score!=null);if(first&&last&&first.term!==last.term)$('detailBody').append(el('p','Score change: '+(last.raw_score-first.raw_score)+' points'));await interventionPanel(r);$('detail').showModal()}catch(e){notify(e.message,true)}}
