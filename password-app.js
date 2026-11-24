@@ -27,7 +27,12 @@ async function requestPasswordSetup() {
   $('send').disabled = true;
   $('recover').disabled = true;
   try {
-    check(await db.auth.resetPasswordForEmail($('email').value.trim(), {redirectTo: website}));
+    const result = await db.auth.resetPasswordForEmail($('email').value.trim(), {redirectTo: website});
+    if (result.error?.status === 429) {
+      notify('Too many setup emails were requested. Use the newest email you received or wait before requesting another.', true);
+      return;
+    }
+    check(result);
     notify('If your BURT account is registered, check your email for a link to set your password.');
   } catch {
     notify('The password setup link could not be requested. Try again later.', true);
